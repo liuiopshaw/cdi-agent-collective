@@ -1,0 +1,1 @@
+"""Descriptor and normalization helpers."""

@@ -1,0 +1,41 @@
+# LLM provider configuration. Any OpenAI-compatible chat endpoint works.
+# The API key is read from the environment variable named by api_key_env.
+
+providers:
+  flagship:
+    base_url: "https://api.openai.com/v1"
+    api_key_env: "CDI_LLM_API_KEY"
+    model: "gpt-4.1"
+  budget:
+    base_url: "https://api.openai.com/v1"
+    api_key_env: "CDI_LLM_API_KEY"
+    model: "gpt-4o-mini"
+  alt_flagship:
+    base_url: "https://api.deepseek.com/v1"
+    api_key_env: "CDI_ALT_LLM_API_KEY"
+    model: "deepseek-chat"
+
+# Role -> provider assignment and per-role temperature.
+# Borrowed practice: deterministic roles run cold, creative roles run warm.
+roles:
+  central:     { provider: flagship,     temperature: 0.3 }
+  data:        { provider: budget,       temperature: 0.1 }
+  prediction:  { provider: budget,       temperature: 0.1 }
+  mechanism:   { provider: flagship,     temperature: 0.5 }
+  critic:      { provider: alt_flagship, temperature: 0.1 }
+  blind_probe: { provider: flagship,     temperature: 0.3 }
+
+orchestration:
+  min_rounds: 2            # two-round query protocol for quantitative tasks
+  require_user_confirmation: true
+
+evaluation:
+  judge_provider: flagship
+  judge_temperature: 0.1
+  backbones: [flagship, alt_flagship, budget]
+
+paths:
+  dataset: "data/dataset_v1.json"
+  vault: "data/vault"      # held-out own data; never used for training
+  logs: "logs"
+  results: "results"
