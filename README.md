@@ -98,6 +98,21 @@ The demo runs the full A0-A4 loop with a deterministic mock LLM plus a real
 sklearn model pool on synthetic data, and prints the calibration report,
 outlier certificate and elimination matrix.
 
+## Phase 1 batch (literature -> dataset)
+
+```bash
+# offline dry run (mock LLM, checks plumbing only)
+python scripts/run_p1.py --pdf-dir data/pdfs --mock --limit 5
+
+# real run: name PDFs by DOI slug, then
+python scripts/run_p1.py --pdf-dir data/pdfs --config config.yaml
+```
+
+Outputs land in `results/p1_<timestamp>/`: extracted texts, the
+versioned `dataset.json`, `quarantine.json` and a `qa_report.md` with a
+manual-review checklist. Pre-extracted `.txt` folders are accepted via
+`--text-dir`.
+
 ## Layout
 
 ```
