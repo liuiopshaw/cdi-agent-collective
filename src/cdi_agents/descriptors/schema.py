@@ -48,7 +48,8 @@ class Interface:
 
 @dataclass
 class Conditions:
-    voltage_window: str = NR
+    voltage_max: float | None = None  # numeric cut-off / window upper bound (V)
+    protocol: str = NR     # free text: CC/CV hybrid, hold time, cut-off notes
     nacl_mg_L: float | None = None
     mode: str = NR           # batch | flow-by | flow-through
     flow_rate: str = NR
@@ -62,7 +63,7 @@ class Conditions:
 class Performance:
     sac_mg_g: float | None = None
     asar: float | None = None
-    charge_efficiency: float | None = None
+    charge_efficiency: float | None = None  # fraction in [0, 1], not percent
     cycles: float | None = None
     retention_pct: float | None = None
     energy: str = NR
@@ -123,4 +124,8 @@ def validate_record(rec: MaterialRecord) -> list[str]:
     if all(v is None for v in (perf.sac_mg_g, perf.disinfection_log)) \
             and perf.ros_yield == NR and perf.rcs_yield == NR:
         issues.append("no quantitative performance field")
+    ce = perf.charge_efficiency
+    if ce is not None and not 0.0 <= ce <= 1.0:
+        issues.append("charge efficiency out of range [0, 1]; "
+                      "schema expects a fraction, not a percent")
     return issues

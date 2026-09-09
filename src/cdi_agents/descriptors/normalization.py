@@ -25,31 +25,12 @@ class FactorConstants:
     frozen: bool = False          # set True after P1 calibration
 
 
-def _parse_voltage(window: str) -> float | None:
-    """Extract a numeric voltage window like '1.2 V' or '0-1.4'."""
-    if not window or window == "NR":
-        return None
-    nums = []
-    token = ""
-    for ch in window:
-        if ch.isdigit() or ch == ".":
-            token += ch
-        elif token:
-            nums.append(float(token))
-            token = ""
-    if token:
-        nums.append(float(token))
-    if not nums:
-        return None
-    return max(nums) - min(nums) if len(nums) > 1 else nums[0]
-
-
 def cs_factor(rec: MaterialRecord, const: FactorConstants) -> float | None:
     """Normalized desalination factor. None if inputs are missing."""
     sac = rec.performance.sac_mg_g
     eta = rec.performance.charge_efficiency
     c0 = rec.conditions.nacl_mg_L
-    v = _parse_voltage(rec.conditions.voltage_window)
+    v = rec.conditions.voltage_max
     if sac is None:
         return None
     eta_term = (eta / const.eta_ref) if eta is not None else 1.0

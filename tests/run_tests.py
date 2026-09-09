@@ -56,12 +56,26 @@ class TestSchema(unittest.TestCase):
             "support": {"family": "carbon", "bogus_field": 1}})
         self.assertEqual(rec.support.family, "carbon")
 
+    def test_charge_efficiency_range_validated(self):
+        rec = MaterialRecord.from_dict({
+            "record_id": "r3b",
+            "performance": {"sac_mg_g": 10.0, "charge_efficiency": 90.3},
+            "provenance": {"evidence_quote": "q"}})
+        issues = validate_record(rec)
+        self.assertTrue(any("charge efficiency" in i for i in issues))
+        rec_ok = MaterialRecord.from_dict({
+            "record_id": "r3c",
+            "performance": {"sac_mg_g": 10.0, "charge_efficiency": 0.903},
+            "provenance": {"evidence_quote": "q"}})
+        self.assertFalse(any("charge efficiency" in i
+                             for i in validate_record(rec_ok)))
+
 
 class TestNormalization(unittest.TestCase):
     def test_cs_factor(self):
         rec = MaterialRecord.from_dict({
             "record_id": "r4",
-            "conditions": {"voltage_window": "1.2", "nacl_mg_L": 500.0},
+            "conditions": {"voltage_max": 1.2, "nacl_mg_L": 500.0},
             "performance": {"sac_mg_g": 20.0, "charge_efficiency": 0.5}})
         const = FactorConstants()
         val = cs_factor(rec, const)
@@ -71,6 +85,18 @@ class TestNormalization(unittest.TestCase):
     def test_cs_factor_missing_sac(self):
         rec = MaterialRecord(record_id="r5")
         self.assertIsNone(cs_factor(rec, FactorConstants()))
+
+    def test_protocol_text_does_not_leak_into_voltage(self):
+        # Regression: free-text protocol strings must not influence the
+        # numeric voltage term (trial-extraction defect, Phase 0.2).
+        rec = MaterialRecord.from_dict({
+            "record_id": "r6",
+            "conditions": {"voltage_max": 1.2,
+                           "protocol": "CC to 1.4 V then CV hold 60 min",
+                           "nacl_mg_L": 500.0},
+            "performance": {"sac_mg_g": 20.0, "charge_efficiency": 0.5}})
+        val = cs_factor(rec, FactorConstants())
+        self.assertAlmostEqual(val, 1.0, places=6)
 
 
 class TestML(unittest.TestCase):
@@ -215,7 +241,7 @@ class TestToolLayer(unittest.TestCase):
         tool = make_compute_factor()
         out = tool.fn(record={
             "record_id": "t",
-            "conditions": {"voltage_window": "1.2", "nacl_mg_L": 500.0},
+            "conditions": {"voltage_max": 1.2, "nacl_mg_L": 500.0},
             "performance": {"sac_mg_g": 20.0,
                             "charge_efficiency": 0.5}}, factor="cs")
         self.assertAlmostEqual(out["value"], 1.0, places=6)

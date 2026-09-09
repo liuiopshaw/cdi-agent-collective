@@ -23,7 +23,10 @@ DATA_SYSTEM = (
     "guess; (2) provenance.evidence_quote must be a verbatim sentence "
     "copied from the source text supporting the most important claims; "
     "(3) never invent identifiers, numbers or units; (4) output only "
-    "valid JSON, no commentary."
+    "valid JSON, no commentary; (5) charge_efficiency is a fraction "
+    "between 0 and 1, never a percent; (6) voltage_max is a plain "
+    "number in volts - protocol details (CC/CV steps, hold times) go "
+    "into conditions.protocol as text."
 )
 
 SCHEMA_HINT = json.dumps({
@@ -38,7 +41,8 @@ SCHEMA_HINT = json.dumps({
                 "interlayer_nm": None, "defect": "NR"},
     "interface": {"bond": "NR", "charge_transfer": "NR",
                   "msi_strength": "NR", "anchor": "NR"},
-    "conditions": {"voltage_window": "NR", "nacl_mg_L": None,
+    "conditions": {"voltage_max": None, "protocol": "NR",
+                   "nacl_mg_L": None,
                    "mode": "batch", "flow_rate": "NR", "ph": None,
                    "dissolved_oxygen": "NR", "oxidant_dose": "NR",
                    "bacteria": "NR"},

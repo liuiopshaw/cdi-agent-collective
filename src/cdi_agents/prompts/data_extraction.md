@@ -9,6 +9,9 @@ Hard rules:
    source text that supports the most important claims (hard rule T2).
 3. Never invent identifiers, numbers, or units.
 4. Output only valid JSON. No commentary, no markdown fences.
+5. charge_efficiency is a fraction in [0, 1], never a percent.
+6. voltage_max is a plain number in volts; CC/CV steps, hold times and
+   other protocol details go into conditions.protocol as text.
 
 Schema sections:
 - active_center: element[], form (single_atom|cluster|nanoparticle),
@@ -17,7 +20,7 @@ Schema sections:
   conductivity, surface_area_m2g, pore, termination, interlayer_nm,
   defect
 - interface: bond, charge_transfer, msi_strength, anchor
-- conditions: voltage_window, nacl_mg_L, mode
+- conditions: voltage_max, protocol, nacl_mg_L, mode
   (batch|flow-by|flow-through), flow_rate, ph, dissolved_oxygen,
   oxidant_dose, bacteria
 - performance: sac_mg_g, asar, charge_efficiency, cycles, retention_pct,
