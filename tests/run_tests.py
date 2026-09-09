@@ -180,5 +180,83 @@ class TestStateBus(unittest.TestCase):
         self.assertEqual(len(state.confirmations), 2)
 
 
+class TestToolLayer(unittest.TestCase):
+    def _registry(self):
+        from cdi_agents.tools import Tool, ToolRegistry
+        reg = ToolRegistry()
+        reg.register(Tool(
+            name="add", description="add two numbers",
+            parameters={"type": "object",
+                        "properties": {"a": {"type": "number"},
+                                       "b": {"type": "number"}},
+                        "required": ["a", "b"]},
+            fn=lambda a, b: a + b))
+        return reg
+
+    def test_schemas_and_dispatch(self):
+        reg = self._registry()
+        schemas = reg.schemas()
+        self.assertEqual(schemas[0]["function"]["name"], "add")
+        out = reg.dispatch("add", {"a": 2, "b": 3})
+        self.assertTrue(out["ok"])
+        self.assertEqual(out["result"], 5)
+        self.assertEqual(len(reg.call_log), 1)
+
+    def test_dispatch_error_payload(self):
+        reg = self._registry()
+        out = reg.dispatch("missing_tool", {})
+        self.assertFalse(out["ok"])
+        self.assertIn("KeyError", out["error"])
+        bad = reg.dispatch("add", {"a": "x", "b": 1})
+        self.assertFalse(bad["ok"])
+
+    def test_builtin_compute_factor(self):
+        from cdi_agents.tools_builtin import make_compute_factor
+        tool = make_compute_factor()
+        out = tool.fn(record={
+            "record_id": "t",
+            "conditions": {"voltage_window": "1.2", "nacl_mg_L": 500.0},
+            "performance": {"sac_mg_g": 20.0,
+                            "charge_efficiency": 0.5}}, factor="cs")
+        self.assertAlmostEqual(out["value"], 1.0, places=6)
+
+    def test_agent_tool_loop(self):
+        from cdi_agents.agents.base import BaseAgent
+
+        class EchoAgent(BaseAgent):
+            role = "echo"
+            system_prompt = "test"
+
+        script = {
+            "please add": {
+                "content": "",
+                "tool_calls": [{"id": "c1", "name": "add",
+                                "arguments": {"a": 1, "b": 2}}],
+            },
+        }
+        agent = EchoAgent(MockLLM(script=script,
+                                  default="final answer: 3"))
+        reg = self._registry()
+        answer = agent.call_with_tools("please add one and two", reg)
+        self.assertEqual(answer, "final answer: 3")
+        self.assertEqual(len(reg.call_log), 1)
+        self.assertEqual(reg.call_log[0].name, "add")
+        self.assertTrue(reg.call_log[0].ok)
+
+    def test_agent_tool_loop_max_steps(self):
+        from cdi_agents.agents.base import BaseAgent
+
+        class LoopAgent(BaseAgent):
+            role = "loop"
+            system_prompt = "test"
+
+        always_call = {"content": "", "tool_calls": [
+            {"id": "c1", "name": "add", "arguments": {"a": 0, "b": 0}}]}
+        agent = LoopAgent(MockLLM(default=always_call))
+        with self.assertRaises(RuntimeError):
+            agent.call_with_tools("anything", self._registry(),
+                                  max_steps=2)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

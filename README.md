@@ -113,6 +113,31 @@ versioned `dataset.json`, `quarantine.json` and a `qa_report.md` with a
 manual-review checklist. Pre-extracted `.txt` folders are accepted via
 `--text-dir`.
 
+## Tool layer (optional, additive)
+
+Agents can use OpenAI-style function calling through a lightweight
+registry. Execution is always deterministic code; every dispatch is
+logged (`registry.call_log`, hard rule T3); tool failures return an
+error payload instead of raising so the reasoning loop can recover.
+
+```python
+from cdi_agents.tools_builtin import default_registry
+
+registry = default_registry(corpus_dir="results/p1_xxx/texts",
+                            dataset_path="results/p1_xxx/dataset.json")
+answer = agent.call_with_tools("your question", registry)
+```
+
+Built-in tools: `corpus_search` (keyword retrieval over local extracted
+texts), `dataset_query` (filter the descriptor dataset by family /
+element), `compute_factor` (C_s / R_s), `train_model` (full model-pool
+LOOCV benchmark on a CSV). Custom tools are three-line `Tool` objects;
+register only what an agent needs (least privilege). Try it offline:
+
+```bash
+python examples/run_tools_demo.py
+```
+
 ## Layout
 
 ```

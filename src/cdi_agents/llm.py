@@ -24,6 +24,22 @@ class LLMResponse:
     model: str
     usage: dict[str, Any] = field(default_factory=dict)
     latency_s: float = 0.0
+    tool_calls: list[dict[str, Any]] = field(default_factory=list)
+
+
+def _normalize_tool_calls(message: dict[str, Any]) -> list[dict[str, Any]]:
+    """Normalize OpenAI-format tool calls into {id, name, arguments}."""
+    normalized = []
+    for tc in message.get("tool_calls") or []:
+        fn = tc.get("function", {})
+        try:
+            args = json.loads(fn.get("arguments") or "{}")
+        except json.JSONDecodeError:
+            args = {"_raw": fn.get("arguments", "")}
+        normalized.append({"id": tc.get("id", f"call_{len(normalized)}"),
+                           "name": fn.get("name", ""),
+                           "arguments": args})
+    return normalized
 
 
 class ChatLLM:
@@ -36,7 +52,8 @@ class ChatLLM:
         self.max_retries = max_retries
 
     def complete(self, system: str,
-                 messages: list[dict[str, str]]) -> LLMResponse:
+                 messages: list[dict[str, str]],
+                 tools: list[dict[str, Any]] | None = None) -> LLMResponse:
         api_key = self.provider.api_key()
         if not api_key:
             raise RuntimeError(
@@ -46,7 +63,10 @@ class ChatLLM:
                    "Content-Type": "application/json"}
         payload_messages = ([{"role": "system", "content": system}]
                             if system else []) + messages
-        body = {"model": self.provider.model, "messages": payload_messages}
+        body: dict[str, Any] = {"model": self.provider.model,
+                                "messages": payload_messages}
+        if tools:
+            body["tools"] = tools
         backoff = 2.0
         last_err: Exception | None = None
         for attempt in range(self.max_retries):
@@ -58,11 +78,13 @@ class ChatLLM:
                     raise RuntimeError(f"transient HTTP {resp.status_code}")
                 resp.raise_for_status()
                 data = resp.json()
+                message = data["choices"][0]["message"]
                 return LLMResponse(
-                    content=data["choices"][0]["message"]["content"],
+                    content=message.get("content") or "",
                     model=data.get("model", self.provider.model),
                     usage=data.get("usage", {}),
                     latency_s=time.time() - started,
+                    tool_calls=_normalize_tool_calls(message),
                 )
             except Exception as err:  # noqa: BLE001 - retried below
                 last_err = err
@@ -75,13 +97,15 @@ class ChatLLM:
 class MockLLM:
     """Deterministic offline stand-in used by demos and tests.
 
-    ``script`` maps a substring of the latest user message to a reply. The
-    first matching key wins; otherwise ``default`` is returned. Every call is
-    appended to ``call_log`` so tests can audit the exact prompt flow.
+    ``script`` maps a substring of the latest user message to a reply. A
+    reply may be a plain string or a dict of the form
+    ``{"content": str, "tool_calls": [{"id", "name", "arguments"}]}`` to
+    emulate function calling. The first matching key wins; otherwise
+    ``default`` is returned. Every call is appended to ``call_log``.
     """
 
-    def __init__(self, script: dict[str, str] | None = None,
-                 default: str = "MOCK_REPLY",
+    def __init__(self, script: dict[str, Any] | None = None,
+                 default: Any = "MOCK_REPLY",
                  on_call: Callable[[str, list[dict[str, str]]], None] | None = None):
         self.script = script or {}
         self.default = default
@@ -90,18 +114,28 @@ class MockLLM:
         self.provider = type("P", (), {"model": "mock-model"})()
 
     def complete(self, system: str,
-                 messages: list[dict[str, str]]) -> LLMResponse:
-        latest = messages[-1]["content"] if messages else ""
-        reply = self.default
+                 messages: list[dict[str, str]],
+                 tools: list[dict[str, Any]] | None = None) -> LLMResponse:
+        # match against the last message; tool-result messages carry the
+        # tool output JSON, which naturally misses the trigger keys and
+        # falls through to ``default`` (the final answer), terminating
+        # the tool loop in tests and demos.
+        latest = messages[-1].get("content") or "" if messages else ""
+        reply: Any = self.default
         for key, value in self.script.items():
             if key in latest:
                 reply = value
                 break
+        content, tool_calls = reply, []
+        if isinstance(reply, dict):
+            content = reply.get("content", "")
+            tool_calls = reply.get("tool_calls", [])
         self.call_log.append({"system": system, "messages": messages,
-                              "reply": reply})
+                              "reply": content, "tool_calls": tool_calls})
         if self.on_call:
             self.on_call(system, messages)
-        return LLMResponse(content=reply, model="mock-model")
+        return LLMResponse(content=content, model="mock-model",
+                           tool_calls=tool_calls)
 
 
 def dump_messages(messages: list[dict[str, str]]) -> str:

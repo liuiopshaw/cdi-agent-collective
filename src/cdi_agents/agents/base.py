@@ -33,6 +33,38 @@ class BaseAgent:
         messages.append({"role": "user", "content": user_content})
         return self.llm.complete(self.system_prompt, messages).content
 
+    def call_with_tools(self, user_content: str, registry,
+                        max_steps: int = 6,
+                        extra_messages: list[dict[str, str]] | None = None
+                        ) -> str:
+        """Agentic tool loop (OpenAI function calling).
+
+        The LLM may request tool calls; each request is executed
+        deterministically by the registry and the result is fed back as a
+        tool message. The loop ends when the LLM answers without tool
+        calls. Every dispatch is recorded in registry.call_log (T3).
+        """
+        messages = list(extra_messages or [])
+        messages.append({"role": "user", "content": user_content})
+        for _ in range(max_steps):
+            resp = self.llm.complete(self.system_prompt, messages,
+                                     tools=registry.schemas())
+            if not resp.tool_calls:
+                return resp.content
+            messages.append({"role": "assistant",
+                             "content": resp.content or ""})
+            for tc in resp.tool_calls:
+                result = registry.dispatch(tc["name"],
+                                           tc.get("arguments"))
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tc["id"],
+                    "name": tc["name"],
+                    "content": json.dumps(result, ensure_ascii=False,
+                                          default=str)})
+        raise RuntimeError(
+            f"tool loop exceeded max_steps={max_steps}")
+
     def handle(self, msg: Message, state: SharedState) -> Message:
         reply = self.call_llm(msg.content)
         return Message(sender=self.name, content=reply,
